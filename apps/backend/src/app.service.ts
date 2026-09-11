@@ -60,7 +60,12 @@ export class AppService {
       .orderBy(desc(schema.chatSessions.createdAt));
   }
 
-  async getPaginatedHistory(userId: string, pageNum: number, limit: number, sessionId?: string) {
+  async getPaginatedHistory(
+    userId: string,
+    pageNum: number,
+    limit: number,
+    sessionId?: string,
+  ) {
     const offset = (pageNum - 1) * limit;
 
     let targetSessionId = sessionId;
@@ -85,9 +90,9 @@ export class AppService {
         .from(schema.chatSessions)
         .where(eq(schema.chatSessions.id, targetSessionId))
         .limit(1);
-        
+
       if (!session || session.userId !== userId) {
-         return { sessionId: null, data: [], hasMore: false };
+        return { sessionId: null, data: [], hasMore: false };
       }
     }
 
@@ -122,8 +127,8 @@ export class AppService {
       .where(
         and(
           eq(schema.chatSessions.id, sessionId),
-          eq(schema.chatSessions.userId, userId)
-        )
+          eq(schema.chatSessions.userId, userId),
+        ),
       );
   }
 
@@ -135,8 +140,8 @@ export class AppService {
       .where(
         and(
           eq(schema.chatSessions.id, sessionId),
-          eq(schema.chatSessions.userId, userId)
-        )
+          eq(schema.chatSessions.userId, userId),
+        ),
       )
       .limit(1);
 

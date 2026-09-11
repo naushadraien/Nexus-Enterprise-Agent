@@ -7,7 +7,6 @@ import {
   BadRequestException,
   InternalServerErrorException,
   UseGuards,
-  Inject,
   Req,
   Param,
   Delete,
@@ -24,19 +23,26 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
 import pdfParse from 'pdf-parse';
-import { generateText, streamText, ToolSet, isStepCount, tool, ModelMessage } from 'ai';
+import {
+  generateText,
+  streamText,
+  ToolSet,
+  isStepCount,
+  tool,
+  ModelMessage,
+} from 'ai';
 import { z } from 'zod';
 import { google } from '@ai-sdk/google';
 import { RagService } from './rag.service';
 import { McpClientService } from './mcp-client.service';
 import { RAG_QUEUE_NAME, getJobCancelKey, redisClient } from './constants';
-import { ChatRequestDto, ChatHistoryQueryDto, RenameSessionDto, ChatSessionParamDto } from './dtos/chat.dto';
+import {
+  ChatRequestDto,
+  ChatHistoryQueryDto,
+  RenameSessionDto,
+  ChatSessionParamDto,
+} from './dtos/chat.dto';
 import { DocumentJobParamDto } from './dtos/document.dto';
-
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
 
 interface AuthRequest {
   user: {
@@ -58,7 +64,7 @@ export class AppController {
   async chat(
     @Req() req: AuthRequest,
     @Body() body: ChatRequestDto,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const { messages } = body;
     const sanitizedMessages = messages.filter(
@@ -102,10 +108,13 @@ export class AppController {
 
     // 3. Define the Agentic RAG Tool
     const ragTool = {
-      search_knowledge_base: {
-        description: 'Search the internal company knowledge base for documents, policies, or facts.',
+      search_knowledge_base: tool({
+        description:
+          'Search the internal company knowledge base for documents, policies, or facts.',
         parameters: z.object({
-          query: z.string().describe('The search query to look up in the knowledge base.'),
+          query: z
+            .string()
+            .describe('The search query to look up in the knowledge base.'),
         }),
         execute: async ({ query }: { query: string }) => {
           console.log(`[RAG Tool] AI is searching for: "${query}"`);
@@ -114,7 +123,7 @@ export class AppController {
             ? results.join('\n\n')
             : 'No relevant information found in the knowledge base.';
         },
-      } as any,
+      }),
     };
 
     // Combine MCP tools and Native tools
@@ -146,13 +155,15 @@ export class AppController {
           // Background Task: Auto-generate title for new sessions
           if (!body.sessionId) {
             this.generateAndSaveTitle(
-              userId, 
-              currentSessionId, 
-              latestMessage, 
-              text || ''
-            ).catch(e => console.error('Background title generation failed', e));
+              userId,
+              currentSessionId,
+              latestMessage,
+              text || '',
+            ).catch((e) =>
+              console.error('Background title generation failed', e),
+            );
           }
-        }
+        },
       });
 
       console.time('First Stream Chunk');
@@ -163,33 +174,47 @@ export class AppController {
           console.timeEnd('First Stream Chunk');
           isFirstChunk = false;
         }
-        
+
         if (part.type === 'text-delta') {
           res.write(part.text);
         } else if (part.type === 'tool-call') {
           res.write(`\n\n_⚙️ Executing Tool: ${part.toolName}..._\n\n`);
         } else if (part.type === 'error') {
           console.error('AI Stream Error (Part):', part.error);
-          const errMsg = part.error instanceof Error ? part.error.message : String(part.error);
-          res.write(`\n\n**Error:** The AI service encountered an issue. ${errMsg}\n\n`);
+          const errMsg =
+            part.error instanceof Error
+              ? part.error.message
+              : String(part.error);
+          res.write(
+            `\n\n**Error:** The AI service encountered an issue. ${errMsg}\n\n`,
+          );
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('AI Stream Error:', error);
-      res.write(`\n\n**Error:** The AI service encountered an issue. ${error.message || 'Please try again later.'}\n\n`);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      res.write(
+        `\n\n**Error:** The AI service encountered an issue. ${errMsg || 'Please try again later.'}\n\n`,
+      );
     } finally {
       res.end();
     }
   }
 
-  private async generateAndSaveTitle(userId: string, sessionId: string, userMessage: string, assistantMessage: string) {
+  private async generateAndSaveTitle(
+    userId: string,
+    sessionId: string,
+    userMessage: string,
+    assistantMessage: string,
+  ) {
     try {
       const summaryResult = await generateText({
         model: google('gemini-3.6-flash'),
-        system: 'You are a helpful assistant that generates a concise, 2-5 word title for a chat session based on the first interaction. Do not use quotes or prefixes like "Title:".',
+        system:
+          'You are a helpful assistant that generates a concise, 2-5 word title for a chat session based on the first interaction. Do not use quotes or prefixes like "Title:".',
         prompt: `User: ${userMessage}\nAssistant: ${assistantMessage}`,
       });
-      
+
       const title = summaryResult.text.trim().replace(/^["']|["']$/g, '');
       if (title) {
         await this.appService.renameSession(userId, sessionId, title);
@@ -256,7 +281,10 @@ export class AppController {
   }
 
   @Delete('chat/sessions/:id')
-  async deleteSession(@Req() req: AuthRequest, @Param() param: ChatSessionParamDto) {
+  async deleteSession(
+    @Req() req: AuthRequest,
+    @Param() param: ChatSessionParamDto,
+  ) {
     const sessionId = param.id;
     const userId = req.user.sub;
     await this.appService.deleteSession(userId, sessionId);
@@ -303,11 +331,21 @@ export class AppController {
       }
 
       const userId = req.user.sub;
-      const job = await this.ragQueue.add('process-pdf', {
-        textContent,
-        originalname: file.originalname,
-        userId,
-      });
+      const job = await this.ragQueue.add(
+        'process-pdf',
+        {
+          textContent,
+          originalname: file.originalname,
+          userId,
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000, // 5s, 10s, 20s
+          },
+        },
+      );
 
       return {
         message: 'Document enqueued for processing',

@@ -42,7 +42,7 @@ export class McpClientService implements OnModuleInit, OnModuleDestroy {
   /**
    * Returns natively mapped tools for Vercel AI SDK from the cache.
    */
-  async getAiSdkTools() {
+  async getAiSdkTools(): Promise<unknown> {
     if (!this.cachedTools) {
       this.cachedTools = await this.client.tools();
     }

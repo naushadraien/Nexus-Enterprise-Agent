@@ -60,38 +60,60 @@ export class RagService implements OnModuleInit {
       `Generating embeddings for ${chunks.length} chunks (with throttling for rate limits)...`,
     );
 
-    // The v1beta Gemini API only supports gemini-embedding-001, which is heavily throttled (15 RPM).
-    // To bypass this, we use massive chunks (7500 chars) so most PDFs fit in a single batch of 5.
-    const embedBatchSize = 5;
+    const embedBatchSize = 10; // Increased batch size since we have resilient backoff
     const allEmbeddings: number[][] = [];
+    const MAX_RETRIES = 5;
 
     for (let i = 0; i < chunks.length; i += embedBatchSize) {
       if (checkCancel) await checkCancel();
-      
+
       const batch = chunks.slice(i, i + embedBatchSize);
-      this.logger.log(
-        `Embedding batch ${Math.floor(i / embedBatchSize) + 1} of ${Math.ceil(chunks.length / embedBatchSize)}...`,
-      );
 
-      const { embeddings } = await embedMany({
-        model: google.embedding('gemini-embedding-001'),
-        values: batch,
-      });
+      let success = false;
+      let retries = 0;
 
-      allEmbeddings.push(...embeddings);
+      while (!success && retries < MAX_RETRIES) {
+        try {
+          this.logger.log(
+            `Embedding batch ${Math.floor(i / embedBatchSize) + 1} of ${Math.ceil(chunks.length / embedBatchSize)}...`,
+          );
+
+          const { embeddings } = await embedMany({
+            model: google.embedding('text-embedding-004'),
+            values: batch,
+          });
+
+          allEmbeddings.push(...embeddings);
+          success = true;
+        } catch (e: unknown) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          if (
+            errMsg.includes('429') ||
+            errMsg.includes('exhausted') ||
+            errMsg.includes('quota') ||
+            errMsg.includes('Too Many Requests')
+          ) {
+            retries++;
+            this.logger.warn(
+              `Google API rate limit hit! Sleeping for 60 seconds before retry ${retries}/${MAX_RETRIES}...`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 60000));
+          } else {
+            throw e; // Non-rate-limit error, crash the job normally
+          }
+        }
+      }
+
+      if (!success) {
+        throw new Error(
+          'Failed to embed batch after maximum retries due to rate limits.',
+        );
+      }
 
       if (onProgress) {
         // Embedding is 50% of the work, upserting is the other 50%
         const progress = Math.round(((i + batch.length) / chunks.length) * 50);
         await onProgress(progress);
-      }
-
-      // Wait 22 seconds between batches to gracefully respect the 15 RPM limit for large documents
-      if (i + embedBatchSize < chunks.length) {
-        this.logger.log(
-          `Sleeping for 22 seconds to respect Google API 15 RPM limit...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, 22000));
       }
     }
 
@@ -113,7 +135,7 @@ export class RagService implements OnModuleInit {
     const batchSize = 100;
     for (let i = 0; i < records.length; i += batchSize) {
       if (checkCancel) await checkCancel();
-      
+
       const batch = records.slice(i, i + batchSize);
       await targetIndex.upsert({ records: batch });
 
@@ -147,7 +169,7 @@ export class RagService implements OnModuleInit {
     try {
       this.logger.log(`Embedding query: "${query}"`);
       const { embedding: queryEmbedding } = await embed({
-        model: google.embedding('gemini-embedding-001'),
+        model: google.embedding('text-embedding-004'),
         value: query,
       });
 
