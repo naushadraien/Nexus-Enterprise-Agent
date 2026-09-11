@@ -13,6 +13,13 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    settings: {
+      next: {
+        rootDir: "apps/frontend/"
+      }
+    }
+  }
 ]);
 
 export default eslintConfig;

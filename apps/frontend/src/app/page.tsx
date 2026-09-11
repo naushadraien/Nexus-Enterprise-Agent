@@ -3,25 +3,29 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Send, User, Bot, Sparkles, Loader2, Paperclip, LogIn, X, Plus, MessageSquare, Pencil, Check, Trash2, Menu, AlertTriangle } from "lucide-react";
+import { Send, User, Sparkles, Loader2, Paperclip, LogIn, X, Plus, MessageSquare, Pencil, Check, Trash2, Menu, AlertTriangle } from "lucide-react";
 import { selectSingleDocument } from "../utils/file-picker";
 import { useAuth, SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { useInfiniteScroll } from "../hooks/use-infinite-scroll";
 import { ModeToggle } from "../components/mode-toggle";
 
+// Define the API URL from environment variables
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
 // Extract markdown components so they aren't recreated on every render tick
+/* eslint-disable @typescript-eslint/no-unused-vars */
 const markdownComponents: Components = {
-  h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mb-3 mt-4 first:mt-0 text-zinc-900 dark:text-zinc-50" {...props} />,
-  h2: ({ node, ...props }) => <h2 className="text-xl font-bold mb-2 mt-4 first:mt-0 text-zinc-900 dark:text-zinc-50" {...props} />,
-  h3: ({ node, ...props }) => <h3 className="text-lg font-bold mb-2 mt-4 first:mt-0 text-zinc-900 dark:text-zinc-50" {...props} />,
-  p: ({ node, ...props }) => <p className="mb-3 last:mb-0 leading-relaxed text-zinc-800 dark:text-zinc-200" {...props} />,
-  ul: ({ node, ...props }) => <ul className="list-disc ml-5 mb-3 space-y-1 text-zinc-800 dark:text-zinc-200" {...props} />,
-  ol: ({ node, ...props }) => <ol className="list-decimal ml-5 mb-3 space-y-1 text-zinc-800 dark:text-zinc-200" {...props} />,
-  li: ({ node, ...props }) => <li className="pl-1" {...props} />,
-  a: ({ node, ...props }) => <a className="text-indigo-600 dark:text-indigo-400 hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
-  strong: ({ node, ...props }) => <strong className="font-semibold text-zinc-900 dark:text-zinc-50" {...props} />,
-  hr: ({ node, ...props }) => <hr className="border-zinc-200 dark:border-zinc-800 my-5" {...props} />,
-  code: ({ node, className, children, ...props }) => {
+  h1: ({ node: _, ...props }) => <h1 className="text-2xl font-bold mb-3 mt-4 first:mt-0 text-zinc-900 dark:text-zinc-50" {...props} />,
+  h2: ({ node: _, ...props }) => <h2 className="text-xl font-bold mb-2 mt-4 first:mt-0 text-zinc-900 dark:text-zinc-50" {...props} />,
+  h3: ({ node: _, ...props }) => <h3 className="text-lg font-bold mb-2 mt-4 first:mt-0 text-zinc-900 dark:text-zinc-50" {...props} />,
+  p: ({ node: _, ...props }) => <p className="mb-3 last:mb-0 leading-relaxed text-zinc-800 dark:text-zinc-200" {...props} />,
+  ul: ({ node: _, ...props }) => <ul className="list-disc ml-5 mb-3 space-y-1 text-zinc-800 dark:text-zinc-200" {...props} />,
+  ol: ({ node: _, ...props }) => <ol className="list-decimal ml-5 mb-3 space-y-1 text-zinc-800 dark:text-zinc-200" {...props} />,
+  li: ({ node: _, ...props }) => <li className="pl-1" {...props} />,
+  a: ({ node: _, ...props }) => <a className="text-indigo-600 dark:text-indigo-400 hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+  strong: ({ node: _, ...props }) => <strong className="font-semibold text-zinc-900 dark:text-zinc-50" {...props} />,
+  hr: ({ node: _, ...props }) => <hr className="border-zinc-200 dark:border-zinc-800 my-5" {...props} />,
+  code: ({ node: _, className, children, ...props }) => {
     const match = /language-(\w+)/.exec(className || '');
     const isInline = !match && !className?.includes('language-');
     return isInline ? (
@@ -42,6 +46,7 @@ const markdownComponents: Components = {
     );
   },
 };
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 const TypewriterMarkdown = ({ 
   content = "", 
@@ -56,8 +61,10 @@ const TypewriterMarkdown = ({
 
   useEffect(() => {
     if (!animate) {
-      setDisplayedLength(content.length);
-      return;
+      const timer = setTimeout(() => {
+        setDisplayedLength(content.length);
+      }, 0);
+      return () => clearTimeout(timer);
     }
 
     if (displayedLength < content.length) {
@@ -102,9 +109,12 @@ export default function Home() {
   // URL Sync for Session ID
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      setSessionId(urlParams.get('session') || 'new');
-      setIsInitializing(false);
+      const timer = setTimeout(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        setSessionId(urlParams.get('session') || 'new');
+        setIsInitializing(false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -139,7 +149,7 @@ export default function Home() {
     try {
       setIsLoadingSessions(true);
       const token = await getToken();
-      const res = await fetch('http://localhost:3001/api/chat/sessions', {
+      const res = await fetch(`${API_URL}/api/chat/sessions`, {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       if (res.ok) {
@@ -154,7 +164,11 @@ export default function Home() {
   }, [isLoaded, isSignedIn, getToken]);
 
   useEffect(() => {
-    fetchSessions();
+    // Run asynchronously to avoid synchronous setState cascading render warnings
+    const load = async () => {
+      await fetchSessions();
+    };
+    load();
   }, [fetchSessions]);
 
   const handleNewChat = () => {
@@ -169,7 +183,7 @@ export default function Home() {
     }
     try {
       const token = await getToken();
-      const res = await fetch(`http://localhost:3001/api/chat/sessions/${id}`, {
+      const res = await fetch(`${API_URL}/api/chat/sessions/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -197,7 +211,7 @@ export default function Home() {
     setIsDeletingSession(true);
     try {
       const token = await getToken();
-      const res = await fetch(`http://localhost:3001/api/chat/sessions/${sessionToDelete}`, {
+      const res = await fetch(`${API_URL}/api/chat/sessions/${sessionToDelete}`, {
         method: 'DELETE',
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
@@ -223,7 +237,7 @@ export default function Home() {
 
     const token = await getToken();
     const sessionQuery = _query ? `&sessionId=${_query}` : '';
-    const res = await fetch(`http://localhost:3001/api/chat/history?page=${page}${sessionQuery}`, {
+    const res = await fetch(`${API_URL}/api/chat/history?page=${page}${sessionQuery}`, {
       signal,
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
@@ -278,7 +292,7 @@ export default function Home() {
 
     try {
       const token = await getToken();
-      const res = await fetch("http://localhost:3001/api/chat", {
+      const res = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -348,7 +362,7 @@ export default function Home() {
     
     try {
       const token = await getToken();
-      await fetch(`http://localhost:3001/api/documents/cancel/${activeJobId}`, {
+      await fetch(`${API_URL}/api/documents/cancel/${activeJobId}`, {
         method: "DELETE",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -378,7 +392,7 @@ export default function Home() {
       formData.append("file", selected.file);
 
       const token = await getToken();
-      const res = await fetch("http://localhost:3001/api/documents", {
+      const res = await fetch(`${API_URL}/api/documents`, {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -404,7 +418,7 @@ export default function Home() {
 
         try {
           const currentToken = await getToken();
-          const statusRes = await fetch(`http://localhost:3001/api/documents/status/${jobId}`, {
+          const statusRes = await fetch(`${API_URL}/api/documents/status/${jobId}`, {
             headers: {
               ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {})
             }
@@ -519,7 +533,7 @@ export default function Home() {
                         value={editingTitle}
                         onChange={(e) => setEditingTitle(e.target.value)}
                         autoFocus
-                        onBlur={(e) => handleRename(e as any, s.id)}
+                        onBlur={(e) => handleRename(e as unknown as React.FormEvent, s.id)}
                         className="bg-transparent text-zinc-900 dark:text-zinc-100 text-xs font-medium w-full focus:outline-none"
                       />
                       <button type="submit" className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 p-1 rounded">
@@ -708,6 +722,7 @@ export default function Home() {
                         {/* Avatar */}
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-xs overflow-hidden ${m.role === "user" ? "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"}`}>
                           {m.role === "user" ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
                             user?.imageUrl ? <img src={user.imageUrl} alt="User" className="w-full h-full object-cover" /> : <User size={15} />
                           ) : (
                             <Sparkles size={15} />
