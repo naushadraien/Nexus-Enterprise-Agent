@@ -116,6 +116,7 @@ export class AppController {
             .string()
             .describe('The search query to look up in the knowledge base.'),
         }),
+        // @ts-expect-error AI SDK type inference issue
         execute: async ({ query }: { query: string }) => {
           console.log(`[RAG Tool] AI is searching for: "${query}"`);
           const results = await this.ragService.retrieveContext(query, userId);
