@@ -110,7 +110,7 @@ export class AppController {
     const ragTool = {
       search_knowledge_base: tool({
         description:
-          'Search the internal company knowledge base for documents, policies, or facts.',
+          'Search the internal company knowledge base for documents, policies, or facts. ONLY use this when the user asks a specific question about company data. Do NOT use this for casual conversation or greetings.',
         parameters: z.object({
           query: z
             .string()
@@ -141,7 +141,7 @@ export class AppController {
       const result = streamText({
         model: google('gemini-3.6-flash'),
         maxRetries: 0, // Prevent 45-second silent hangs when API quota is hit
-        system: `You are a helpful company assistant. You can use available tools to look up external information or search the internal company knowledge base. Always use tools when you need to verify facts. Do NOT introduce yourself as an AI built by Google, and do not use repetitive generic greetings. Provide direct, natural responses without preamble.`,
+        system: `You are a helpful company assistant. You can use available tools to look up external information or search the internal company knowledge base. Always use tools when you need to verify facts, but DO NOT use tools for casual greetings or conversational replies. Do NOT introduce yourself as an AI built by Google, and do not use repetitive generic greetings. Provide direct, natural responses without preamble.`,
         messages: currentMessages,
         tools: combinedTools,
         stopWhen: isStepCount(5), // Automatically loops for tool calls!

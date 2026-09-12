@@ -169,11 +169,21 @@ export class RagService implements OnModuleInit {
 
     try {
       this.logger.log(`Embedding query: "${query}"`);
-      const { embedding: queryEmbedding } = await embed({
-        model: google.embedding('gemini-embedding-001'),
-        maxRetries: 0,
-        value: query,
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second strict timeout
+
+      let queryEmbedding: number[];
+      try {
+        const result = await embed({
+          model: google.embedding('gemini-embedding-001'),
+          maxRetries: 0,
+          value: query,
+          abortSignal: controller.signal,
+        });
+        queryEmbedding = result.embedding;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const baseIndex = this.pinecone.index(this.indexName);
       const targetIndex = userId ? baseIndex.namespace(userId) : baseIndex;
