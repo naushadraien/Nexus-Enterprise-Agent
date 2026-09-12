@@ -79,7 +79,8 @@ export class RagService implements OnModuleInit {
           );
 
           const { embeddings } = await embedMany({
-            model: google.embedding('text-embedding-004'),
+            model: google.embedding('gemini-embedding-001'),
+            maxRetries: 0,
             values: batch,
           });
 
@@ -169,7 +170,8 @@ export class RagService implements OnModuleInit {
     try {
       this.logger.log(`Embedding query: "${query}"`);
       const { embedding: queryEmbedding } = await embed({
-        model: google.embedding('text-embedding-004'),
+        model: google.embedding('gemini-embedding-001'),
+        maxRetries: 0,
         value: query,
       });
 
