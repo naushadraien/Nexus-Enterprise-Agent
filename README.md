@@ -12,6 +12,7 @@ rag-project/
 │   ├── backend/        # NestJS API (Core logic, RAG ingestion, AI chat)
 │   ├── frontend/       # Next.js App Router UI (Chat interface, auth)
 │   └── mcp-server/     # Model Context Protocol server (External tools)
+├── packages/           # Shared workspace for configurations and UI libraries
 ├── turbo.json          # Turborepo configuration
 └── package.json        # Root package file
 ```
@@ -61,9 +62,8 @@ Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in your keys fo
 Copy `apps/frontend/.env.example` to `apps/frontend/.env.local` and fill in your Clerk keys.
 
 ### 3. Database Migration
-In the backend directory, push the Drizzle schema to your database:
+Since the project is powered by Turborepo, you can run database migrations directly from the root:
 ```bash
-cd apps/backend
 npm run db:generate
 npm run db:push
 ```

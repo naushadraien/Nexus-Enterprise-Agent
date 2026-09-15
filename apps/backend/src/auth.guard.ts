@@ -31,6 +31,7 @@ export class AuthGuard implements CanActivate {
       const decoded = await verifyToken(token, {
         secretKey: process.env.CLERK_SECRET_KEY,
         issuer: null,
+        clockSkewInMs: 60000,
       });
       // Attach the verified user payload to the request
       request.user = decoded;

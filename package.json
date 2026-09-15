@@ -3,12 +3,16 @@
   "private": true,
   "packageManager": "npm@11.7.0",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "db:generate": "turbo run db:generate",
+    "db:push": "turbo run db:push",
     "prepare": "husky"
   },
   "devDependencies": {
