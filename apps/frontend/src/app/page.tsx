@@ -386,6 +386,8 @@ export default function Home() {
       .reverse()
       .map(({ role, content }) => ({ role, content }));
 
+    let pendingSessionId: string | null = null;
+
     try {
       const token = await getToken();
       const res = await fetch(`${API_URL}/api/chat`, {
@@ -406,8 +408,7 @@ export default function Home() {
 
       const returnedSessionId = res.headers.get("x-session-id");
       if (returnedSessionId && (sessionId === null || sessionId === "new")) {
-        setSessionId(returnedSessionId);
-        fetchSessions(); // Refresh sessions list if it was a new chat
+        pendingSessionId = returnedSessionId;
       }
 
       const reader = res.body?.getReader();
@@ -472,6 +473,11 @@ export default function Home() {
         ...newMessages,
       ]);
       setLoading(false);
+    } finally {
+      if (pendingSessionId) {
+        setSessionId(pendingSessionId);
+        fetchSessions(); // Refresh sessions list if it was a new chat
+      }
     }
   };
 
