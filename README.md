@@ -26,9 +26,9 @@ rag-project/
 - **Auth:** Clerk (`@clerk/nextjs`)
 
 ### 🔹 Backend (`apps/backend`)
-- **Framework:** NestJS
+- **Framework:** NestJS (Modular Domain-Driven Architecture)
 - **Database ORM:** Drizzle ORM (PostgreSQL / Neon)
-- **AI / LLM:** Google Gemini (`@ai-sdk/google`)
+- **AI / LLM:** Multi-provider support via Vercel AI SDK (OpenAI, Anthropic, Google Gemini, DeepSeek, OpenRouter) with split Generative & Embedding configuration.
 - **Vector Database:** Pinecone (for RAG / Document Embeddings)
 - **Job Queue:** BullMQ & Redis (Upstash) for background document ingestion
 - **Auth:** Clerk (Backend Verification)
@@ -38,6 +38,7 @@ rag-project/
 - **Purpose:** Exposes external capabilities (e.g. system commands, APIs) as standardized tools for the AI agent.
 
 ## ✨ Features
+- **🤖 Model-Agnostic AI**: Switch between providers (OpenAI, Anthropic, Google Gemini, DeepSeek, OpenRouter) simply by changing your `.env` file, without touching code. You can even mix-and-match (e.g., Anthropic for chat, OpenAI for text embeddings).
 - **Real-time AI Chat**: Streams responses chunk-by-chunk using Vercel AI SDK.
 - **RAG Document Ingestion**: Upload PDFs, TXTs, or Markdown. The files are queued (Redis/BullMQ), parsed, chunked, and stored in Pinecone as vector embeddings.
 - **MCP Tool Calling**: The agent can call external local tools via Model Context Protocol.

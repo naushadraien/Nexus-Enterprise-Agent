@@ -4,13 +4,35 @@ This is the backend service for the Nexus Enterprise Agent. It acts as the core 
 
 ## 📂 Architecture
 
-The backend is built with **NestJS** and relies on several dedicated services:
+The backend is built with **NestJS** using a modular, domain-driven structure:
 
-- **`ChatService`**: Orchestrates the Vercel AI SDK (`streamText`, `generateText`), constructs the toolset, and handles session title generation.
-- **`DocumentService`**: Handles PDF parsing, background job queuing (BullMQ), and status polling for document ingestion.
-- **`RagService`**: Manages the Pinecone vector database and Google Gemini embeddings.
-- **`McpClientService`**: Connects to the local MCP server via Server-Sent Events (SSE) and exposes external tools to the AI.
-- **`AppService`**: Manages PostgreSQL database interactions via Drizzle ORM (Sessions, Messages, Users).
+- **`AiModule`**: Manages the `AiProviderService` for seamless integration across multiple AI models (OpenAI, Anthropic, Google Gemini, DeepSeek, OpenRouter) and separate text embedding models.
+- **`ChatModule`**: Orchestrates the Vercel AI SDK (`streamText`, `generateText`), constructs the MCP toolset, and manages chat interactions.
+- **`SessionModule`**: Manages PostgreSQL database interactions via Drizzle ORM (Sessions, Messages, Users) and handles auto-generating chat titles.
+- **`RagModule`**: Handles file parsing, background job queuing (BullMQ) for document ingestion, and manages the Pinecone vector database.
+- **`McpModule`**: Connects to the local MCP server via Server-Sent Events (SSE) and exposes external tools to the AI.
+- **`HealthModule`**: Provides readiness and health checks.
+
+## 🤖 Model-Agnostic AI
+
+The Nexus backend is entirely model-agnostic. Instead of hardcoding a specific AI provider, the backend dynamically instantiates the correct model based on your `.env` configuration. 
+
+You can mix and match providers for chat and text embeddings:
+- **Supported Chat Providers:** OpenAI, Anthropic, Google Gemini, DeepSeek, OpenRouter
+- **Supported Embedding Providers:** OpenAI, Google Gemini
+
+Example configuration in `.env`:
+```env
+# Chat Provider
+AI_PROVIDER="openrouter"
+AI_MODEL_ID="anthropic/claude-3.5-sonnet"
+GENERATIVE_AI_API_KEY="your-openrouter-key"
+
+# Embedding Provider
+AI_EMBEDDING_PROVIDER="openai"
+AI_EMBEDDING_MODEL_ID="text-embedding-3-small"
+EMBEDDING_AI_API_KEY="your-openai-key"
+```
 
 ## 🚀 Setup Instructions
 
