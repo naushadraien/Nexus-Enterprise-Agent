@@ -19,23 +19,9 @@ import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from './auth.guard';
 import { AppService } from './app.service';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-
-import pdfParse from 'pdf-parse';
-import {
-  generateText,
-  streamText,
-  ToolSet,
-  isStepCount,
-  tool,
-  ModelMessage,
-} from 'ai';
-import { z } from 'zod';
-import { google } from '@ai-sdk/google';
-import { RagService } from './rag.service';
-import { McpClientService } from './mcp-client.service';
-import { RAG_QUEUE_NAME, getJobCancelKey, redisClient } from './constants';
+import { ChatService } from './chat.service';
+import { DocumentService } from './document.service';
+import type { ModelMessage } from 'ai';
 import {
   ChatRequestDto,
   ChatHistoryQueryDto,
@@ -55,9 +41,8 @@ interface AuthRequest {
 export class AppController {
   constructor(
     private readonly appService: AppService,
-    private readonly ragService: RagService,
-    private readonly mcpClientService: McpClientService,
-    @InjectQueue(RAG_QUEUE_NAME) private readonly ragQueue: Queue,
+    private readonly chatService: ChatService,
+    private readonly documentService: DocumentService,
   ) {}
 
   @Post('chat')
@@ -92,8 +77,7 @@ export class AppController {
     // Save User Message
     await this.appService.saveMessage(currentSessionId, 'user', latestMessage);
 
-    // 1. Instantly open the stream so the frontend can receive real-time updates!
-    // Pass sessionId to frontend via header (MUST be before flushHeaders)
+    // Set up streaming response headers
     res.setHeader('x-session-id', currentSessionId);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Transfer-Encoding', 'chunked');
@@ -101,81 +85,21 @@ export class AppController {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders(); // CRITICAL: Force headers to be sent immediately so the frontend fetch doesn't hang!
 
-    // 2. Fetch MCP Tools from Memory Cache
-    console.time('MCP Tool Fetch');
-    const mcpTools = (await this.mcpClientService.getAiSdkTools()) as ToolSet;
-    console.timeEnd('MCP Tool Fetch');
-
-    // 3. Define the Agentic RAG Tool
-    const ragTool = {
-      search_knowledge_base: tool({
-        description:
-          'Search the internal company knowledge base for documents, policies, or facts. ONLY use this when the user asks a specific question about company data. Do NOT use this for casual conversation or greetings.',
-        parameters: z.object({
-          query: z
-            .string()
-            .describe('The search query to look up in the knowledge base.'),
-        }),
-        // @ts-expect-error AI SDK type inference issue
-        execute: async ({ query }: { query: string }) => {
-          console.log(`[RAG Tool] AI is searching for: "${query}"`);
-          const results = await this.ragService.retrieveContext(query, userId);
-          return results.length > 0
-            ? results.join('\n\n')
-            : 'No relevant information found in the knowledge base.';
-        },
-      }),
-    };
-
-    // Combine MCP tools and Native tools
-    const combinedTools: ToolSet = {
-      ...mcpTools,
-      ...ragTool,
-    };
-
     const currentMessages: ModelMessage[] = [
       ...sanitizedMessages,
     ] as ModelMessage[];
 
     try {
-      const result = streamText({
-        model: google('gemini-3.6-flash'),
-        maxRetries: 0, // Prevent 45-second silent hangs when API quota is hit
-        system: `You are a helpful company assistant. You can use available tools to look up external information or search the internal company knowledge base. Always use tools when you need to verify facts, but DO NOT use tools for casual greetings or conversational replies. Do NOT introduce yourself as an AI built by Google, and do not use repetitive generic greetings. Provide direct, natural responses without preamble.`,
-        messages: currentMessages,
-        tools: combinedTools,
-        stopWhen: isStepCount(5), // Automatically loops for tool calls!
-        onFinish: async ({ text }) => {
-          // Save Assistant Message
-          await this.appService.saveMessage(
-            currentSessionId,
-            'assistant',
-            text || '',
-          );
+      // Delegate all AI logic to ChatService
+      const result = await this.chatService.streamChat(
+        userId,
+        currentSessionId,
+        currentMessages,
+        { isNewSession: !body.sessionId, latestMessage },
+      );
 
-          // Background Task: Auto-generate title for new sessions
-          if (!body.sessionId) {
-            this.generateAndSaveTitle(
-              userId,
-              currentSessionId,
-              latestMessage,
-              text || '',
-            ).catch((e) =>
-              console.error('Background title generation failed', e),
-            );
-          }
-        },
-      });
-
-      console.time('First Stream Chunk');
-      let isFirstChunk = true;
-
+      // Iterate the stream and write to the HTTP response
       for await (const part of result.fullStream) {
-        if (isFirstChunk) {
-          console.timeEnd('First Stream Chunk');
-          isFirstChunk = false;
-        }
-
         if (part.type === 'text-delta') {
           res.write(part.text);
         } else if (part.type === 'tool-call') {
@@ -199,29 +123,6 @@ export class AppController {
       );
     } finally {
       res.end();
-    }
-  }
-
-  private async generateAndSaveTitle(
-    userId: string,
-    sessionId: string,
-    userMessage: string,
-    assistantMessage: string,
-  ) {
-    try {
-      const summaryResult = await generateText({
-        model: google('gemini-3.6-flash'),
-        system:
-          'You are a helpful assistant that generates a concise, 2-5 word title for a chat session based on the first interaction. Do not use quotes or prefixes like "Title:".',
-        prompt: `User: ${userMessage}\nAssistant: ${assistantMessage}`,
-      });
-
-      const title = summaryResult.text.trim().replace(/^["']|["']$/g, '');
-      if (title) {
-        await this.appService.renameSession(userId, sessionId, title);
-      }
-    } catch (e) {
-      console.error('Failed to generate session title:', e);
     }
   }
 
@@ -303,56 +204,20 @@ export class AppController {
         throw new BadRequestException('No file provided');
       }
 
-      let textContent = '';
-
-      if (file.mimetype === 'application/pdf') {
-        try {
-          const data = await pdfParse(file.buffer);
-          textContent = data.text;
-        } catch (pdfError) {
-          console.error('PDF_PARSE_ERROR:', pdfError);
-          throw new BadRequestException('Failed to parse PDF file');
-        }
-      } else if (
-        file.mimetype.startsWith('text/') ||
-        file.mimetype === 'application/json' ||
-        file.mimetype === 'application/csv' ||
-        file.originalname.endsWith('.txt') ||
-        file.originalname.endsWith('.md')
-      ) {
-        textContent = file.buffer.toString('utf-8');
-      } else {
-        throw new BadRequestException(
-          `Unsupported file type: ${file.mimetype}`,
-        );
-      }
+      // Delegate text extraction to DocumentService
+      const textContent = await this.documentService.extractTextAsync(file);
 
       if (!textContent.trim()) {
         throw new BadRequestException('Extracted text is empty');
       }
 
+      // Delegate queue management to DocumentService
       const userId = req.user.sub;
-      const job = await this.ragQueue.add(
-        'process-pdf',
-        {
-          textContent,
-          originalname: file.originalname,
-          userId,
-        },
-        {
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 5000, // 5s, 10s, 20s
-          },
-        },
+      return await this.documentService.enqueueDocument(
+        textContent,
+        file.originalname,
+        userId,
       );
-
-      return {
-        message: 'Document enqueued for processing',
-        jobId: job.id,
-        filename: file.originalname,
-      };
     } catch (error) {
       console.error('UPLOAD_CRASH:', error);
       if (error instanceof BadRequestException) throw error;
@@ -364,35 +229,11 @@ export class AppController {
 
   @Get('documents/status/:jobId')
   async getJobStatus(@Param() param: DocumentJobParamDto) {
-    const jobId = param.jobId;
-    const job = await this.ragQueue.getJob(jobId);
-    if (!job) {
-      throw new BadRequestException('Job not found');
-    }
-
-    const state = await job.getState();
-    const progress = job.progress;
-
-    return {
-      jobId: job.id,
-      state,
-      progress,
-      result: job.returnvalue as number | null,
-      failedReason: job.failedReason,
-    };
+    return await this.documentService.getJobStatus(param.jobId);
   }
 
   @Delete('documents/cancel/:jobId')
   async cancelJob(@Param() param: DocumentJobParamDto) {
-    const jobId = param.jobId;
-    const job = await this.ragQueue.getJob(jobId);
-    if (job) {
-      // Set a Redis flag that the worker can check periodically
-      const cancelKey = getJobCancelKey(jobId);
-      await redisClient.set(cancelKey, '1', 'EX', 3600); // Expire in 1 hour
-
-      return { message: 'Job cancellation requested' };
-    }
-    throw new BadRequestException('Job not found');
+    return await this.documentService.cancelJob(param.jobId);
   }
 }

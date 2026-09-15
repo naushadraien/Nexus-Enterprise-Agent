@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { HealthController } from './health.controller';
 import { AppService } from './app.service';
+import { ChatService } from './chat.service';
+import { DocumentService } from './document.service';
 import { RagService } from './rag.service';
 import { McpClientService } from './mcp-client.service';
 import { ConfigModule } from '@nestjs/config';
@@ -24,6 +26,13 @@ import { RAG_QUEUE_NAME } from './constants';
     }),
   ], // Enables .env file parsing, DB, and Redis Queue
   controllers: [HealthController, AppController],
-  providers: [AppService, RagService, McpClientService, RagProcessor],
+  providers: [
+    AppService,
+    ChatService,
+    DocumentService,
+    RagService,
+    McpClientService,
+    RagProcessor,
+  ],
 })
 export class AppModule {}
