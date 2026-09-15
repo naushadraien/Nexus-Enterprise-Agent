@@ -1,9 +1,9 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { embed, embedMany } from 'ai';
-import { google } from '@ai-sdk/google';
 import { Pinecone } from '@pinecone-database/pinecone';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { AiProviderService } from '../ai/ai.service';
 
 @Injectable()
 export class RagService implements OnModuleInit {
@@ -11,7 +11,10 @@ export class RagService implements OnModuleInit {
   private pinecone!: Pinecone;
   private indexName = 'rag-project';
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private aiProvider: AiProviderService,
+  ) {}
 
   onModuleInit() {
     this.logger.log('Initializing RAG Service (Pinecone)...');
@@ -79,8 +82,7 @@ export class RagService implements OnModuleInit {
           );
 
           const { embeddings } = await embedMany({
-            model: google.embedding('gemini-embedding-001'),
-            maxRetries: 0,
+            model: this.aiProvider.getEmbeddingModel(),
             values: batch,
           });
 
@@ -175,8 +177,7 @@ export class RagService implements OnModuleInit {
       let queryEmbedding: number[];
       try {
         const result = await embed({
-          model: google.embedding('gemini-embedding-001'),
-          maxRetries: 0,
+          model: this.aiProvider.getEmbeddingModel(),
           value: query,
           abortSignal: controller.signal,
         });

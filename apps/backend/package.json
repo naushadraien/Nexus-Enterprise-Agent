@@ -22,8 +22,11 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.53",
+    "@ai-sdk/deepseek": "^3.0.44",
     "@ai-sdk/google": "^4.0.51",
     "@ai-sdk/mcp": "^2.0.39",
+    "@ai-sdk/openai": "^4.0.66",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@nestjs/bullmq": "^12.0.0",
@@ -31,6 +34,7 @@
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
     "@pinecone-database/pinecone": "^8.2.0",
     "ai": "^7.0.79",
     "bullmq": "^6.3.2",

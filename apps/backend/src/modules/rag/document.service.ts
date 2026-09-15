@@ -2,7 +2,11 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import pdfParse from 'pdf-parse';
-import { RAG_QUEUE_NAME, getJobCancelKey, redisClient } from './constants';
+import {
+  RAG_QUEUE_NAME,
+  getJobCancelKey,
+  redisClient,
+} from '../../constants/constants';
 
 @Injectable()
 export class DocumentService {

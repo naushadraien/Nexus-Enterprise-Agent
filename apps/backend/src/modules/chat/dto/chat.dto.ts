@@ -13,7 +13,7 @@ export const ChatRequestSchema = z.object({
 export class ChatRequestDto extends createZodDto(ChatRequestSchema) {}
 
 export const ChatSessionParamSchema = z.object({
-  id: z.string().uuid().or(z.string()), // Accept UUID or any string id format used by DB
+  id: z.uuid().or(z.string()), // Accept UUID or any string id format used by DB
 });
 export class ChatSessionParamDto extends createZodDto(ChatSessionParamSchema) {}
 

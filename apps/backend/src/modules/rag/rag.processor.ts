@@ -2,7 +2,11 @@ import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { RagService } from './rag.service';
-import { RAG_QUEUE_NAME, getJobCancelKey, redisClient } from './constants';
+import {
+  RAG_QUEUE_NAME,
+  getJobCancelKey,
+  redisClient,
+} from '../../constants/constants';
 
 @Processor(RAG_QUEUE_NAME)
 export class RagProcessor extends WorkerHost {

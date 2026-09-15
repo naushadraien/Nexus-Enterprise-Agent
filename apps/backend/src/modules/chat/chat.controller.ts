@@ -2,10 +2,7 @@ import {
   Controller,
   Post,
   Body,
-  UseInterceptors,
-  UploadedFile,
   BadRequestException,
-  InternalServerErrorException,
   UseGuards,
   Req,
   Param,
@@ -16,19 +13,16 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { AuthGuard } from './auth.guard';
-import { AppService } from './app.service';
+import { AuthGuard } from '../../common/guards/auth.guard';
+import { SessionService } from '../session/session.service';
 import { ChatService } from './chat.service';
-import { DocumentService } from './document.service';
 import type { ModelMessage } from 'ai';
 import {
   ChatRequestDto,
   ChatHistoryQueryDto,
   RenameSessionDto,
   ChatSessionParamDto,
-} from './dtos/chat.dto';
-import { DocumentJobParamDto } from './dtos/document.dto';
+} from './dto/chat.dto';
 
 interface AuthRequest {
   user: {
@@ -36,16 +30,15 @@ interface AuthRequest {
   };
 }
 
-@Controller('api')
+@Controller('api/chat')
 @UseGuards(AuthGuard)
-export class AppController {
+export class ChatController {
   constructor(
-    private readonly appService: AppService,
+    private readonly sessionService: SessionService,
     private readonly chatService: ChatService,
-    private readonly documentService: DocumentService,
   ) {}
 
-  @Post('chat')
+  @Post()
   async chat(
     @Req() req: AuthRequest,
     @Body() body: ChatRequestDto,
@@ -65,17 +58,21 @@ export class AppController {
     const userId = req.user.sub;
 
     // Ensure User exists in DB
-    await this.appService.ensureUserExists(userId);
+    await this.sessionService.ensureUserExists(userId);
 
     // Session Management
-    const currentSessionId = await this.appService.getOrCreateSession(
+    const currentSessionId = await this.sessionService.getOrCreateSession(
       userId,
       body.sessionId,
       latestMessage,
     );
 
     // Save User Message
-    await this.appService.saveMessage(currentSessionId, 'user', latestMessage);
+    await this.sessionService.saveMessage(
+      currentSessionId,
+      'user',
+      latestMessage,
+    );
 
     // Set up streaming response headers
     res.setHeader('x-session-id', currentSessionId);
@@ -126,7 +123,7 @@ export class AppController {
     }
   }
 
-  @Get('chat/history')
+  @Get('history')
   async getChatHistory(
     @Req() req: AuthRequest,
     @Query() query: ChatHistoryQueryDto,
@@ -140,7 +137,7 @@ export class AppController {
       `[DEBUG] Fetching chat history for user: ${userId}, page: ${pageNum}, session: ${sessionId || 'latest'}`,
     );
 
-    return await this.appService.getPaginatedHistory(
+    return await this.sessionService.getPaginatedHistory(
       userId,
       pageNum,
       limit,
@@ -148,14 +145,14 @@ export class AppController {
     );
   }
 
-  @Get('chat/sessions')
+  @Get('sessions')
   async getChatSessions(@Req() req: AuthRequest) {
     const userId = req.user.sub;
-    const sessions = await this.appService.getSessions(userId);
+    const sessions = await this.sessionService.getSessions(userId);
     return { sessions };
   }
 
-  @Patch('chat/sessions/:id')
+  @Patch('sessions/:id')
   async renameSession(
     @Req() req: AuthRequest,
     @Param() param: ChatSessionParamDto,
@@ -168,7 +165,7 @@ export class AppController {
     }
 
     // Validate session ownership before renaming
-    const history = await this.appService.getPaginatedHistory(
+    const history = await this.sessionService.getPaginatedHistory(
       userId,
       1,
       1,
@@ -178,62 +175,22 @@ export class AppController {
       throw new BadRequestException('Session not found or access denied');
     }
 
-    await this.appService.renameSession(userId, sessionId, body.title.trim());
+    await this.sessionService.renameSession(
+      userId,
+      sessionId,
+      body.title.trim(),
+    );
     return { success: true };
   }
 
-  @Delete('chat/sessions/:id')
+  @Delete('sessions/:id')
   async deleteSession(
     @Req() req: AuthRequest,
     @Param() param: ChatSessionParamDto,
   ) {
     const sessionId = param.id;
     const userId = req.user.sub;
-    await this.appService.deleteSession(userId, sessionId);
+    await this.sessionService.deleteSession(userId, sessionId);
     return { success: true };
-  }
-
-  @Post('documents')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadDocument(
-    @Req() req: AuthRequest,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    try {
-      if (!file) {
-        throw new BadRequestException('No file provided');
-      }
-
-      // Delegate text extraction to DocumentService
-      const textContent = await this.documentService.extractTextAsync(file);
-
-      if (!textContent.trim()) {
-        throw new BadRequestException('Extracted text is empty');
-      }
-
-      // Delegate queue management to DocumentService
-      const userId = req.user.sub;
-      return await this.documentService.enqueueDocument(
-        textContent,
-        file.originalname,
-        userId,
-      );
-    } catch (error) {
-      console.error('UPLOAD_CRASH:', error);
-      if (error instanceof BadRequestException) throw error;
-      throw new InternalServerErrorException(
-        error instanceof Error ? error.message : 'Upload failed',
-      );
-    }
-  }
-
-  @Get('documents/status/:jobId')
-  async getJobStatus(@Param() param: DocumentJobParamDto) {
-    return await this.documentService.getJobStatus(param.jobId);
-  }
-
-  @Delete('documents/cancel/:jobId')
-  async cancelJob(@Param() param: DocumentJobParamDto) {
-    return await this.documentService.cancelJob(param.jobId);
   }
 }
