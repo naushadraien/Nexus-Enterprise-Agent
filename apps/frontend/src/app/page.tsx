@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { NexusLogo } from "../components/nexus-logo";
 import {
   Send,
   User,
@@ -936,7 +935,7 @@ export default function Home() {
                               <User size={15} />
                             )
                           ) : (
-                            <NexusLogo size={15} />
+                            <Sparkles size={15} />
                           )}
                         </div>
 
