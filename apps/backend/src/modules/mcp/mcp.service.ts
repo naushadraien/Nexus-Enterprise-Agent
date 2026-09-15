@@ -20,6 +20,7 @@ export class McpClientService implements OnModuleInit, OnModuleDestroy {
     const transport = new StdioClientTransport({
       command: 'npx',
       args: ['tsx', serverPath],
+      env: process.env as Record<string, string>,
     });
 
     // createMCPClient automatically connects and wraps the transport natively for AI SDK
