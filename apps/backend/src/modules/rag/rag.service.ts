@@ -58,6 +58,7 @@ export class RagService implements OnModuleInit {
 
     this.logger.log(`Chunking document: ${sourceName}`);
     const chunks = this.chunkText(text);
+    this.logger.log(`[Upload] Total chunks to process: ${chunks.length}`);
 
     this.logger.log(
       `Generating embeddings for ${chunks.length} chunks (with throttling for rate limits)...`,
@@ -71,6 +72,8 @@ export class RagService implements OnModuleInit {
       if (checkCancel) await checkCancel();
 
       const batch = chunks.slice(i, i + embedBatchSize);
+      const batchNum = Math.floor(i / embedBatchSize) + 1;
+      const totalBatches = Math.ceil(chunks.length / embedBatchSize);
 
       let success = false;
       let retries = 0;
@@ -78,7 +81,7 @@ export class RagService implements OnModuleInit {
       while (!success && retries < MAX_RETRIES) {
         try {
           this.logger.log(
-            `Embedding batch ${Math.floor(i / embedBatchSize) + 1} of ${Math.ceil(chunks.length / embedBatchSize)}...`,
+            `[Upload] Embedding batch ${batchNum}/${totalBatches} (chunks ${i + 1}-${Math.min(i + batch.length, chunks.length)}/${chunks.length})...`,
           );
 
           const { embeddings } = await embedMany({
@@ -88,6 +91,9 @@ export class RagService implements OnModuleInit {
 
           allEmbeddings.push(...embeddings);
           success = true;
+          this.logger.log(
+            `[Upload] ✔ Batch ${batchNum}/${totalBatches} embedded successfully.`,
+          );
         } catch (e: unknown) {
           const errMsg = e instanceof Error ? e.message : String(e);
           if (
@@ -116,6 +122,7 @@ export class RagService implements OnModuleInit {
       if (onProgress) {
         // Embedding is 50% of the work, upserting is the other 50%
         const progress = Math.round(((i + batch.length) / chunks.length) * 50);
+        this.logger.log(`[Upload] Embedding progress: ${progress}%`);
         await onProgress(progress);
       }
     }
@@ -130,8 +137,10 @@ export class RagService implements OnModuleInit {
       },
     }));
 
-    this.logger.log(`Upserting to Pinecone index '${this.indexName}'...`);
-    const baseIndex = this.pinecone.index(this.indexName);
+    this.logger.log(
+      `[Upload] Upserting ${records.length} vectors to Pinecone index '${this.indexName}'...`,
+    );
+    const baseIndex = this.pinecone.Index(this.indexName);
     const targetIndex = userId ? baseIndex.namespace(userId) : baseIndex;
 
     // Pinecone upserts are recommended in batches of ~100 max
@@ -141,17 +150,21 @@ export class RagService implements OnModuleInit {
 
       const batch = records.slice(i, i + batchSize);
       await targetIndex.upsert({ records: batch });
+      this.logger.log(
+        `[Upload] ✔ Upserted ${Math.min(i + batch.length, records.length)}/${records.length} vectors.`,
+      );
 
       if (onProgress) {
         // Upserting is the remaining 50% of the work
         const progress =
           50 + Math.round(((i + batch.length) / records.length) * 50);
+        this.logger.log(`[Upload] Overall progress: ${progress}%`);
         await onProgress(progress);
       }
     }
 
     this.logger.log(
-      `Successfully ingested ${records.length} chunks from ${sourceName}`,
+      `[Upload] ✅ Complete! Successfully ingested ${records.length} chunks from "${sourceName}".`,
     );
     return records.length;
   }
@@ -186,7 +199,7 @@ export class RagService implements OnModuleInit {
         clearTimeout(timeoutId);
       }
 
-      const baseIndex = this.pinecone.index(this.indexName);
+      const baseIndex = this.pinecone.Index(this.indexName);
       const targetIndex = userId ? baseIndex.namespace(userId) : baseIndex;
       const queryResponse = await targetIndex.query({
         vector: queryEmbedding,
